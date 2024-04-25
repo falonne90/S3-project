@@ -1,0 +1,121 @@
+# this template contain my s3 bucket and my cloudfront distribution. we access the contain in the bucket through cloudfront
+# as the index.html file is not uploaded we can uploade it through CLI doing the following command: aws s3 cp error.html s3://chedopbucket1/       
+# as the error.html file is not uploaded we can uploade it through CLI doing the following command: aws s3 cp index.html s3://chedopbucket1/
+# the policy is not uploaded we can uploade it through CLI doing the following command: aws s3api put-bucket-policy --bucket chedopbucket1 --policy file://policy.json
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  MyBucketName:
+    Type: String
+    Default: "chedopbucket1" 
+  DomainName:
+    Type: String
+    Default: "chedopbucket1.s3-website-us-east-1.amazonaws.com"  # in this domain name we just add the name of the bucket + domain name
+  ErrorPagePath:
+    Type: String
+    Default: "/error.html"
+
+# below is my s3 bucket that has the domain name of my bucket and this bucket is public
+Resources:
+  MyBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref MyBucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: 'index.html'
+        ErrorDocument: 'error.html'
+      VersioningConfiguration:
+        Status: Enabled
+
+  # below is my bucket policy
+  MyBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref MyBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - 
+            Sid: PublicReadGetObject
+            Action: 's3:GetObject'
+          - Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref MyBucket
+                - '/*'
+          - 
+            Sid: AllowCloudFrontLogs
+            Effect: Allow
+            Principal:
+             Service: cloudfront.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref MyBucket
+                - '/*'
+            # Condition:
+            #   StringEquals:
+            #     s3:x-amz-acl: bucket-owner-full-control
+
+  # below is my cloudfront distribution that has the domain name of my bucket
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: 'true'
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: !Ref ErrorPagePath
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: 'true'
+          DefaultTTL: 33000
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: 'false'
+          TargetOriginId: "chedopbucket1.s3-website-us-east-1.amazonaws.com"
+          MaxTTL: 54000
+          MinTTL: 60
+          ViewerProtocolPolicy: redirect-to-https 
+        DefaultRootObject: 'index.html'
+        HttpVersion: 'http2'
+        Logging: 
+          Bucket: "chedopbucket1.s3.amazonaws.com"
+          IncludeCookies: 'false'
+          Prefix: "logs"
+        Origins:
+          - CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginKeepaliveTimeout: 5
+              OriginProtocolPolicy: https-only
+              OriginReadTimeout: 25
+              OriginSSLProtocols:
+                - TLSv1
+                - TLSv1.1
+                - TLSv1.2       
+            DomainName: !GetAtt MyBucket.RegionalDomainName
+            Id: 'chedopbucket1.s3-website-us-east-1.amazonaws.com'
+

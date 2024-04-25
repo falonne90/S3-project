@@ -1,0 +1,110 @@
+# this template contain my s3 bucket and my cloudfront distribution. we access the contain in the bucket through cloudfront
+# as the index.html file is not uploaded we can uploade it through CLI doing the following command: aws s3 cp error.html s3://chedopbucket1/       
+# as the error.html file is not uploaded we can uploade it through CLI doing the following command: aws s3 cp index.html s3://chedopbucket1/
+# first template builded for this project here the policy is added directly into the template
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  WebBucketName:
+    Type: String
+    Default: "webster404" 
+  DomainName:
+    Type: String
+    Default: "webster404.s3-website-us-east-1.amazonaws.com"
+  ErrorPagePath:
+    Type: String
+    Default: "/error.html"
+
+Resources:
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref WebBucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred # This setting allows the cloudfront logs to automatically add itself to the ACLs (as long as they are enabled).
+      WebsiteConfiguration:
+        IndexDocument: "index.html"
+        ErrorDocument: "error.html"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Sid: PublicReadGetObject
+            Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub "arn:aws:s3:::${WebBucket}/*"
+            Principal: "*"
+          -
+            Sid: AllowCloudFrontLogs
+            Effect: Allow
+            Principal:
+              Service: "cloudfront.amazonaws.com"
+            Action: "s3:PutObject"
+            Resource: "arn:aws:s3:::webster404/*"
+            Condition:
+              StringEquals:
+                "s3:x-amz-acl": "bucket-owner-full-control"
+
+  CloudFrontDistribution:
+    Type: "AWS::CloudFront::Distribution"
+    Properties:
+      DistributionConfig:
+        # Aliases: with this you will have to provide your own certificate and the default for the cloudfront will not work.
+        #   - !Ref DomainName
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: !Ref ErrorPagePath
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+          DefaultTTL: 3600
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+          MaxTTL: 86400
+          MinTTL: 10
+          TargetOriginId: "webster404.s3-website-us-east-1.amazonaws.com"
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: "index.html"
+        Enabled: true
+        HttpVersion: http2
+        Logging:
+          Bucket: "webster404.s3.amazonaws.com"
+          IncludeCookies: false
+          Prefix: "logs/" # this is the folder name where the cloudfront logs are stored. It could be any name.
+        
+        Origins:
+          - CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginKeepaliveTimeout: 5
+              OriginProtocolPolicy: 'https-only'
+              OriginReadTimeout: 30
+              OriginSSLProtocols:
+                - TLSv1
+                - TLSv1.1
+                - TLSv1.2
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            Id: "webster404.s3-website-us-east-1.amazonaws.com"
+
